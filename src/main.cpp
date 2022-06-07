@@ -38,6 +38,7 @@ long intervallTemperatureMeasuring = 20000;
 char topicVorlauf[] = "esp32/Pool/Vorlauftemperatur";
 char topicRuecklauf[] = "esp32/Pool/Ruecklauftemperatur";
 char topicAussen[] = "esp32/Pool/Aussentemperatur";
+char topicReserve[] = "esp32/Pool/Reservetemperatur";
 
 // Externe Schaltausgäng per MQTT
 char topicSwitchFilterpumpe[] = "esp32/Reinigung/Filterpumpe";
@@ -69,14 +70,15 @@ byte pcfData = 0x00;
 #define pcf_Aktoren 0x21    // Schaltet alle Aktoren
 #define pcf_Keys 0x22       // Liest Tastendruck ein
 #define pcf_keysStatus 0x23 // Status Leds Keys
+
 byte pcfReadData = 0;
 boolean sendMessage = false;
 
 // Eingänge der Temperatursensoren
-#define ONE_WIRE_BUS_Vorlauf 5    // GPIO5
+#define ONE_WIRE_BUS_Vorlauf 27   // GPIO5
 #define ONE_WIRE_BUS_Ruecklauf 18 // GPI18
 #define ONE_WIRE_BUS_Aussen 19    // GPI19
-#define ONE_WIRE_BUS_Reserve 27   // GPIO27
+#define ONE_WIRE_BUS_Reserve 5    // GPIO27
 
 // Init der Temperaturwerte
 float temperatureVl = 0.0f;
@@ -92,7 +94,7 @@ String strMTime;
 String timeStampMeasurement = "00:00:00";
 
 // ModSeg-Kennung
-#define fwModSeg "01.06.2022 1.0/00"
+#define fwModSeg "07.06.2022 1.0/00"
 
 // Init des NTP-Servers
 #define ntpServer "pool.ntp.org"
@@ -558,6 +560,9 @@ void loop()
 
     Serial.println("Publish topicAussen = " + String(topicAussen));
     client.publish(topicAussen, dtostrf(temperatureAu, t_BUFFER_SIZE - 1, 2, buffer));
+
+    Serial.println("Publish topicReserve = " + String(topicReserve));
+    client.publish(topicReserve, dtostrf(temperatureReserve, t_BUFFER_SIZE - 1, 2, buffer));
 
     char buft[35];
     Serial.println("Publish topicMeasurementTime = " + String(topicInfoUhrzeit));
