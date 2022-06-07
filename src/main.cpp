@@ -12,6 +12,7 @@
 
 // Globales FehlerFlag
 boolean result = false;
+byte data = 0x00;
 
 // LCD-Display
 LiquidCrystal_I2C lcd(0x27, 16, 4);
@@ -491,7 +492,7 @@ void setup()
   // Init des I2C-Bus
   Serial.println("Starte I2C-Bus.");
   Wire.begin();
-  Wire.setClock(100000L);
+  Wire.setClock(400000L);
   Wire.beginTransmission(pcf_Aktoren);
   Wire.write(allOutPutsLow);
   Wire.endTransmission();
@@ -609,6 +610,51 @@ void loop()
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
       exit;
+    }
+
+    if (Serial.available())
+    {
+      char x = Serial.read();
+      switch (x)
+      {
+      case 'a':
+      { // LED 1 schalten
+        Wire.beginTransmission(0x21);
+        data = (data | 0x01);
+        Wire.write(data);
+        Wire.endTransmission();
+        delay(1500);
+        break;
+      }
+      case 'A':
+      {
+        Wire.beginTransmission(0x21);
+        data = (data & 0xFE);
+        Wire.write(data);
+        Wire.endTransmission();
+        delay(1500);
+        break;
+      }
+      case 'b':
+      {
+        // LED 2 schalten
+        Wire.beginTransmission(0x21);
+        data = (data | 0x02);
+        Wire.write(data);
+        Wire.endTransmission();
+        delay(1500);
+        break;
+      }
+      case 'B':
+      {
+        Wire.beginTransmission(0x21);
+        data = (data & 0xFD);
+        Wire.write(data);
+        Wire.endTransmission();
+        delay(1500);
+        break;
+      }
+      }
     }
 
     // // Pumpe der Duschen
