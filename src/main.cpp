@@ -82,6 +82,7 @@ boolean sendMessage = false;
 float temperatureVl = 0.0f;
 float temperatureRl = 0.0f;
 float temperatureAu = 0.0f;
+float temperatureReserve = 0.0f;
 
 // Datums- und Zeitausgabe
 DateTime now;
@@ -126,6 +127,9 @@ DallasTemperature sensorRuecklauf(&oneWireRuecklauf);
 
 OneWire oneWireAussen(ONE_WIRE_BUS_Aussen);
 DallasTemperature sensorAussen(&oneWireAussen);
+
+OneWire oneWireReserve(ONE_WIRE_BUS_Reserve);
+DallasTemperature sensorReserve(&oneWireReserve);
 
 // StatusLed's auf dem PCBA
 int BB_Led = 23; // GPIO 23
@@ -291,6 +295,16 @@ float getTemperatureFromSensorAu()
   return value;
 }
 
+// TemperaturMessung Reserve
+float getTemperatureFromSensorReserve()
+{
+  float value = 0.0f;
+  sensorReserve.requestTemperaturesByIndex(0);
+  value = sensorReserve.getTempCByIndex(0);
+  Serial.println("Reserve = " + String(value));
+  return value;
+}
+
 // Datenausgabe auf seriellen Port
 void writeDataToSerial()
 {
@@ -306,6 +320,11 @@ void writeDataToSerial()
 
   Serial.println("Temperature Aussen");
   Serial.print(temperatureAu);
+  Serial.print(" C");
+  Serial.println("\n");
+
+  Serial.println("Temperature Reserve");
+  Serial.print(temperatureReserve);
   Serial.print(" C");
   Serial.println("\n");
 }
@@ -522,6 +541,7 @@ void loop()
     temperatureVl = getTemperatureFromSensorVl();
     temperatureRl = getTemperatureFromSensorRl();
     temperatureAu = getTemperatureFromSensorAu();
+    temperatureReserve = getTemperatureFromSensorReserve();
 
     // Ausgabe auf LCD
     lcdPrintOut();
@@ -611,50 +631,51 @@ void loop()
       Wire.endTransmission();
       exit;
     }
+  }
 
-    if (Serial.available())
+  // Test mit seriellem Monitor
+  if (Serial.available())
+  {
+    char x = Serial.read();
+    switch (x)
     {
-      char x = Serial.read();
-      switch (x)
-      {
-      case 'a':
-      { // LED 1 schalten
-        Wire.beginTransmission(0x21);
-        data = (data | 0x01);
-        Wire.write(data);
-        Wire.endTransmission();
-        delay(1500);
-        break;
-      }
-      case 'A':
-      {
-        Wire.beginTransmission(0x21);
-        data = (data & 0xFE);
-        Wire.write(data);
-        Wire.endTransmission();
-        delay(1500);
-        break;
-      }
-      case 'b':
-      {
-        // LED 2 schalten
-        Wire.beginTransmission(0x21);
-        data = (data | 0x02);
-        Wire.write(data);
-        Wire.endTransmission();
-        delay(1500);
-        break;
-      }
-      case 'B':
-      {
-        Wire.beginTransmission(0x21);
-        data = (data & 0xFD);
-        Wire.write(data);
-        Wire.endTransmission();
-        delay(1500);
-        break;
-      }
-      }
+    case 'a':
+    { // LED 1 schalten
+      Wire.beginTransmission(0x21);
+      data = (data | 0x01);
+      Wire.write(data);
+      Wire.endTransmission();
+      delay(1500);
+      break;
+    }
+    case 'A':
+    {
+      Wire.beginTransmission(0x21);
+      data = (data & 0xFE);
+      Wire.write(data);
+      Wire.endTransmission();
+      delay(1500);
+      break;
+    }
+    case 'b':
+    {
+      // LED 2 schalten
+      Wire.beginTransmission(0x21);
+      data = (data | 0x02);
+      Wire.write(data);
+      Wire.endTransmission();
+      delay(1500);
+      break;
+    }
+    case 'B':
+    {
+      Wire.beginTransmission(0x21);
+      data = (data & 0xFD);
+      Wire.write(data);
+      Wire.endTransmission();
+      delay(1500);
+      break;
+    }
     }
 
     // // Pumpe der Duschen
