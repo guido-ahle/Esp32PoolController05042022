@@ -94,7 +94,7 @@ String strMTime;
 String timeStampMeasurement = "00:00:00";
 
 // ModSeg-Kennung
-#define fwModSeg "09.06.2022 1.0/00"
+#define fwModSeg "09.06.2022 1.0/01"
 
 // Init des NTP-Servers
 #define ntpServer "pool.ntp.org"
