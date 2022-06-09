@@ -10,6 +10,10 @@
 #include <RTClib.h>
 #include <LiquidCrystal_I2C.h>
 
+
+// ModSeg-Kennung
+#define fwModSeg "09.06.2022 1.0/03"
+
 // Globales FehlerFlag
 boolean result = false;
 byte data = 0x00;
@@ -93,8 +97,6 @@ char timeString[32];
 String strMTime;
 String timeStampMeasurement = "00:00:00";
 
-// ModSeg-Kennung
-#define fwModSeg "09.06.2022 1.0/02"
 
 // Init des NTP-Servers
 #define ntpServer "ptbtime1.ptb.de"
