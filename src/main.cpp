@@ -34,7 +34,7 @@ uint16_t chip = (uint16_t)(chipid >> 32);
 char clientid[25];
 
 // Temperaturmessung
-long intervallTemperatureMeasuring = 20000;
+long intervallTemperatureMeasuring = 60000;
 char topicVorlauf[] = "esp32/Pool/Vorlauftemperatur";
 char topicRuecklauf[] = "esp32/Pool/Ruecklauftemperatur";
 char topicAussen[] = "esp32/Pool/Aussentemperatur";
@@ -94,7 +94,7 @@ String strMTime;
 String timeStampMeasurement = "00:00:00";
 
 // ModSeg-Kennung
-#define fwModSeg "07.06.2022 1.0/00"
+#define fwModSeg "09.06.2022 1.0/00"
 
 // Init des NTP-Servers
 #define ntpServer "pool.ntp.org"
@@ -312,22 +312,22 @@ void writeDataToSerial()
 {
   Serial.println("Temperature Vorlauf");
   Serial.print(temperatureVl);
-  Serial.print(" C");
+  Serial.print(" °C");
   Serial.println("\n");
 
   Serial.println("Temperature Ruecklauf");
   Serial.print(temperatureRl);
-  Serial.print(" C");
+  Serial.print(" °C");
   Serial.println("\n");
 
   Serial.println("Temperature Aussen");
   Serial.print(temperatureAu);
-  Serial.print(" C");
+  Serial.print(" °C");
   Serial.println("\n");
 
   Serial.println("Temperature Reserve");
   Serial.print(temperatureReserve);
-  Serial.print(" C");
+  Serial.print(" °C");
   Serial.println("\n");
 }
 
@@ -378,7 +378,9 @@ void printLocalTime()
 void lcdPrintOut()
 {
   lcd.setCursor(0, 0);
-  lcd.print("Temperatur Vl/RL/Au");
+  lcd.print("RV = ");
+  lcd.print(temperatureReserve);
+  lcd.print(" Grad");
 
   lcd.setCursor(0, 1);
   lcd.print("VL = ");
@@ -437,9 +439,7 @@ String getRtcTime()
   now = rtc.now();
   String strDate = String(now.day()) + "." + String(now.month(), DEC) + "." + String(now.year(), DEC);
   String strTime = String(now.hour(), DEC) + ":" + String(now.minute(), DEC) + ":" + String(now.second(), DEC);
-  timeStampMeasurement = strDate + " " + strTime;
-  Serial.println("TimeStamp = " + timeStampMeasurement);
-  return timeStampMeasurement;
+  return (strDate + " " + strTime);
 }
 
 // Setup-Routine
@@ -501,6 +501,8 @@ void setup()
   client.setCallback(callback);
 
   // RTC-Setup
+  getLocalTime(&timeInfo);
+
   rtc.adjust(DateTime(__DATE__, __TIME__));
 
   // OTA-Updates
@@ -569,7 +571,7 @@ void loop()
     getRtcTime().toCharArray(buft, 35);
     Serial.println("Rtc is " + getRtcTime());
     Serial.print("LocalTime = ");
-    Serial.print(&timeInfo, "%A, %B %d %Y %H:%M:%S");
+    Serial.println(&timeInfo, "%A, %B %d %Y %H:%M:%S");
     client.publish(topicInfoUhrzeit, buft);
 
     Serial.println("Publish topicFirmwareModSeg = " + String(topicInfoFirmware));
@@ -605,9 +607,9 @@ void loop()
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
 
-      exit;
     }
-    else if (!flagFilterPumpe)
+    
+    if (!flagFilterPumpe)
     {
       pcfData = (pcfData & 0xFE); // 1111 1110
       Wire.beginTransmission(pcf_Aktoren);
@@ -627,7 +629,8 @@ void loop()
       Wire.endTransmission();
       exit;
     }
-    else if (!flagFilterPumpeManuell)
+    
+    if (!flagFilterPumpeManuell)
     {
       pcfData = (pcfData & 0xFD); // 1111 1101
       Wire.beginTransmission(pcf_Aktoren);
@@ -636,6 +639,32 @@ void loop()
       Wire.endTransmission();
       exit;
     }
+
+    // FilterPumpeManuell
+    if (flagPumpeDusche)
+    {
+      pcfData = (pcfData | 0x04); // 0000 1000
+      Wire.beginTransmission(pcf_Aktoren);
+      Serial.println("FilterPumpeManuell ein!");
+      Wire.write(pcfData); // alles ein
+      Wire.endTransmission();
+      exit;
+    }
+    
+    if (!flagPumpeDusche)
+    {
+      pcfData = (pcfData & 0xFC); // 1111 0111
+      Wire.beginTransmission(pcf_Aktoren);
+      Serial.println("FilterPumpeManuell aus!");
+      Wire.write(pcfData); // alles aus
+      Wire.endTransmission();
+      exit;
+    }
+
+
+
+
+    messageReceived = false;
   }
 
   // Test mit seriellem Monitor
@@ -682,75 +711,6 @@ void loop()
       break;
     }
     }
-
-    // // Pumpe der Duschen
-    // if (flagPumpeDusche)
-    // {
-    //   Wire.beginTransmission(pcf_Aktoren);
-    //   Serial.println("Pumpe Dusche ein!");
-    //   Wire.write(0x04); // alles ein
-    //   Wire.endTransmission();
-    //   exit;
-    // }
-    // else if (!flagPumpeDusche)
-    // {
-    //   Wire.beginTransmission(pcf_Aktoren);
-    //   Serial.println("Pumpe Dusche aus!");
-    //   Wire.write(0x00); // alles aus
-    //   Wire.endTransmission();
-    //   exit;
-    // }
-
-    // // Unterwasserscheinwerfer
-    // if (flagUnterwasserscheinwerfer)
-    // {
-    //   Wire.beginTransmission(pcf_Aktoren);
-    //   Serial.println("Scheinwerfer ein!");
-    //   Wire.write(0x08); // alles ein
-    //   Wire.endTransmission();
-    //   exit;
-    // }
-    // else if (!flagPumpeDusche)
-    // {
-    //   Wire.beginTransmission(pcf_Aktoren);
-    //   Serial.println("Scheinwerfer aus!");
-    //   Wire.write(0x00); // alles aus
-    //   Wire.endTransmission();
-    // }
-
-    // // Ventil RegenwaldDusche
-    // if (flagVentilRegenwaldDusche)
-    // {
-    //   Wire.beginTransmission(pcf_Aktoren);
-    //   Serial.println("Ventil RegenwaldDusche ein!");
-    //   Wire.write(0x10); // alles ein
-    //   Wire.endTransmission();
-    // }
-    // else if (!flagPumpeDusche)
-    // {
-    //   Wire.beginTransmission(pcf_Aktoren);
-    //   Serial.println("Ventil RegenwaldDusche aus!");
-    //   Wire.write(0x00); // alles aus
-    //   Wire.endTransmission();
-    // }
-
-    // // Ventil RegenwaldDusche
-    // if (flagVentilSchwallDusche)
-    // {
-    //   Wire.beginTransmission(pcf_Aktoren);
-    //   Serial.println("Ventil SchwallDusche ein!");
-    //   Wire.write(0x40); // alles ein
-    //   Wire.endTransmission();
-    // }
-    // else if (!flagPumpeDusche)
-    // {
-    //   Wire.beginTransmission(pcf_Aktoren);
-    //   Serial.println("Ventil SchwalldDusche aus!");
-    //   Wire.write(0x00); // alles aus
-    //   Wire.endTransmission();
-    // }
-
-    messageReceived = false;
   }
 
   // Durchflussmesser
