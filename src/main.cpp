@@ -10,6 +10,9 @@
 #include <RTClib.h>
 #include <LiquidCrystal_I2C.h>
 
+// ModSeg-Kennung
+#define fwModSeg "09.06.2022 1.0/03"
+
 // Globales FehlerFlag
 boolean result = false;
 byte data = 0x00;
@@ -93,11 +96,9 @@ char timeString[32];
 String strMTime;
 String timeStampMeasurement = "00:00:00";
 
-// ModSeg-Kennung
-#define fwModSeg "09.06.2022 1.0/00"
 
 // Init des NTP-Servers
-#define ntpServer "pool.ntp.org"
+#define ntpServer "ptbtime1.ptb.de"
 const long gmOffset_sec = 3600;
 const int daylightOffset_sec = 3600;
 
@@ -138,7 +139,7 @@ int BB_Led = 23; // GPIO 23
 boolean bb_on = false;
 
 int ErrorLed = 2; // GPIO2
-boolean error_Led = false;
+boolean flagError_Led = false;
 
 // Init der Zeitkonstanten
 unsigned long previousTime = 0;
@@ -375,37 +376,31 @@ void printLocalTime()
 }
 
 // Datenausgabe auf LCD
-void lcdPrintOut()
+void lcdPrintOut(String text1, String text2, String text3, String text4)
 {
+  
   lcd.setCursor(0, 0);
-  lcd.print("RV = ");
-  lcd.print(temperatureReserve);
-  lcd.print(" Grad");
+  lcd.print(text1);
 
   lcd.setCursor(0, 1);
-  lcd.print("VL = ");
-  lcd.print(temperatureVl);
-  lcd.print(" Grad");
+  lcd.print(text2);
 
   lcd.setCursor(0, 2);
-  lcd.print("RL = ");
-  lcd.print(temperatureRl);
-  lcd.print(" Grad");
+  lcd.print(text3);
 
   lcd.setCursor(0, 3);
-  lcd.print("Au = ");
-  lcd.print(temperatureAu);
-  lcd.print(" Grad");
-
-  delay(1000);
+  lcd.print(text4);
+  // delay(1000);
 }
 
 // Verbindung zum MQTT-Server herstellen
 void reconnect()
 {
+
+  int maxRetries = 5;
   Serial.println("Starte MQTT-Verbindung");
   int a = 0;
-  while (!client.connected())
+  while ((!client.connected()) && (a <= maxRetries))
   {
     Serial.print("Attempting MQTT-Connection");
     if (client.connect(clientid, "openhabian", "Jona2010"))
@@ -425,10 +420,24 @@ void reconnect()
       Serial.print("failed, rc = ");
       client.print(client.state());
       Serial.println("Try again in 5 Seconds...");
-      delay(5000);
+      delay(10000);
     }
-
     a++;
+  }
+  // Wenn nicht innerhalb von 5 Sekunden der MQTT-Server ein Connect hergestellt hat,
+  // dann boote ich den ESP32 "hard".
+  if (a = maxRetries)
+  {
+    Serial.println("Restart in 10 seconds!");
+    for (int a = 9; a >= 0; a--)
+    {
+      Serial.println(String(a));
+      String counter = "Restart in " + String(a) + " seconds.";
+      lcdPrintOut(counter, "", "", "");
+      delay(1000);
+    }
+    //
+    ESP.restart();
   }
 }
 
@@ -448,6 +457,13 @@ void setup()
   // DurchlussSensor
   pinMode(FlowSensor, INPUT);
 
+  // Init der Status LED's
+  pinMode(BB_Led, OUTPUT);
+  digitalWrite(BB_Led, HIGH); // BB Led aus!
+
+  pinMode(ErrorLed, OUTPUT);
+  digitalWrite(ErrorLed, HIGH); // ErrorLed aus!
+
   // Start serieller Port
   Serial.begin(9600);
 
@@ -455,65 +471,114 @@ void setup()
   Serial.println("Starte Lcd");
   lcd.init();
   lcd.backlight();
+  lcdPrintOut("LCD is started1", "", "", "");
 
-  // Starte Sensor
+  // Starte Sensor Vorlauf
   Serial.println("Starte Sensor VL");
+  lcdPrintOut("Start Sensor VL", "", "", "");
   sensorVorlauf.begin();
+  sensorVorlauf.setResolution(10);
+  if (sensorVorlauf.getDeviceCount() == 1)
+  {
+    flagError_Led = false;
+  }
+  else
+  {
+    flagError_Led = true;
+  }
 
-  // Starte Sensor
+  // Starte Sensor Rücklauf
   Serial.println("Starte Sensor Rl");
+  lcdPrintOut("Start Sensor RL", "", "", "");
   sensorRuecklauf.begin();
+  sensorRuecklauf.setResolution(10);
+  if (sensorRuecklauf.getDeviceCount() == 1)
+  {
+    flagError_Led = false;
+  }
+  else
+  {
+    flagError_Led = true;
+  }
 
-  // Starte Sensor
+  // Starte Sensor Aussen
   Serial.println("Starte Sensor Aussen");
+  lcdPrintOut("Start Sensor AU", "", "", "");
   sensorAussen.begin();
+  sensorAussen.setResolution(10);
+  if (sensorAussen.getDeviceCount() == 1)
+  {
+    flagError_Led = false;
+  }
+  else
+  {
+    flagError_Led = true;
+  }
+
+  // Starte Sensor Reserve
+  Serial.println("Starte Sensor Reserve");
+  lcdPrintOut("Start Sensor RT", "", "", "");
+  sensorReserve.begin();
+  sensorReserve.setResolution(10);
+  if (sensorReserve.getDeviceCount() == 1)
+  {
+    flagError_Led = false;
+  }
+  else
+  {
+    flagError_Led = true;
+  }
 
   // Start Rtc
+  lcdPrintOut("Start RTC!", "Wait...", "", "");
   if (!rtc.begin())
   {
     Serial.println("Keine RTC gefunden");
+    lcdPrintOut("Found no RTC!", "", "", "");
     while (1)
       ;
   }
   else
   {
     Serial.println("RTC gestartet.");
+    lcdPrintOut("RTC started!", "", "", "");
   }
 
   // Connecto to WiFi
+  lcdPrintOut("Start Wifi", "Wait...", "", "");
   connectToWifi();
   Serial.print("IP-Adress is ");
   Serial.print(WiFi.localIP());
+  lcdPrintOut("WiFi strted", "IP-Adress", String(WiFi.localIP()), "");
   Serial.println();
 
-  // Init der Status LED's
-  pinMode(BB_Led, OUTPUT);
-  pinMode(ErrorLed, OUTPUT);
-
   // Init des NTP-Server/Zeitmanagments
+  lcdPrintOut("Config NTP-server", "Wait...", "", "");
   configTime(gmOffset_sec, daylightOffset_sec, ntpServer);
 
   // Ausgabe der Uhrzeit
   printLocalTime();
 
   // Connectiong to MQTT-Broker
+  lcdPrintOut("Start MQTT", "Wait...", "", "");
   client.setServer(mqtt_broker, mqtt_port);
   client.setCallback(callback);
 
   // RTC-Setup
+  lcdPrintOut("Start RTC-Adjust", "Wait...", "", "");
   getLocalTime(&timeInfo);
-
   rtc.adjust(DateTime(__DATE__, __TIME__));
+  getRtcTime();
 
   // OTA-Updates
+  lcdPrintOut("Start OTA", "Wait...", "", "");
   ArduinoOTA.setHostname(hostname);
   ArduinoOTA.setPassword("Test123");
   ArduinoOTA.begin();
 
-  getRtcTime();
-
   // Init des I2C-Bus
   Serial.println("Starte I2C-Bus.");
+  lcdPrintOut("Start I2c-Bus", "Wait...", "", "");
   Wire.begin();
   Wire.setClock(400000L);
   Wire.beginTransmission(pcf_Aktoren);
@@ -548,7 +613,7 @@ void loop()
     temperatureReserve = getTemperatureFromSensorReserve();
 
     // Ausgabe auf LCD
-    lcdPrintOut();
+    lcdPrintOut("VL : " + String(temperatureVl), "RL : " + String(temperatureRl), "AU : " + String(temperatureAu), "RT : " + String(temperatureReserve));
 
     // Ausgabe auf seriellen POrt
     writeDataToSerial();
@@ -579,6 +644,7 @@ void loop()
   }
 
   // Schalten der BB-Led
+  // Setzen der Error-LED
   if ((millis() - previousTime) > 1000)
   {
     previousTime = millis();
@@ -592,6 +658,15 @@ void loop()
       digitalWrite(BB_Led, LOW);
       bb_on = false;
     }
+
+    if (flagError_Led = true)
+    {
+      digitalWrite(ErrorLed, HIGH);
+    }
+    else
+    {
+      digitalWrite(ErrorLed, LOW);
+    }
   }
 
   if (messageReceived)
@@ -599,72 +674,141 @@ void loop()
     Serial.println("Nachricht erhalten!");
     // Auswertung der Nachrichten
     // Filterpumpe
-    if (flagFilterPumpe)
+    if (flagFilterPumpe && messageReceived)
     {
       pcfData = (pcfData | 0x01); // 0000 0001
       Wire.beginTransmission(pcf_Aktoren);
       Serial.println("FilterPumpe ein!");
+      lcdPrintOut("FilterPumpe ein!", "Wait..", "", "");
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
-
+      messageReceived = false;
     }
-    
-    if (!flagFilterPumpe)
+
+    if (!flagFilterPumpe && messageReceived)
     {
       pcfData = (pcfData & 0xFE); // 1111 1110
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Serial.println("FilterPumpe aus!");
+      lcdPrintOut("FilterPumpe aus!", "Wait..", "", "");
       Wire.endTransmission();
-      exit;
+      messageReceived = false;
     }
 
     // FilterPumpeManuell
-    if (flagFilterPumpeManuell)
+    if (flagFilterPumpeManuell && messageReceived)
     {
       pcfData = (pcfData | 0x02); // 0000 0010
       Wire.beginTransmission(pcf_Aktoren);
       Serial.println("FilterPumpeManuell ein!");
+      lcdPrintOut("FilterPumpeManuell ein!", "Wait..", "", "");
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
-      exit;
+      messageReceived = false;
     }
-    
-    if (!flagFilterPumpeManuell)
+    if (!flagFilterPumpeManuell && messageReceived)
     {
       pcfData = (pcfData & 0xFD); // 1111 1101
       Wire.beginTransmission(pcf_Aktoren);
       Serial.println("FilterPumpeManuell aus!");
+      lcdPrintOut("FilterPumpeManuell aus!", "Wait..", "", "");
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
-      exit;
+      messageReceived = false;
     }
 
-    // FilterPumpeManuell
-    if (flagPumpeDusche)
+    // PumpeDusche
+    if (flagPumpeDusche && messageReceived)
     {
-      pcfData = (pcfData | 0x04); // 0000 1000
+      pcfData = (pcfData | 0x04); // 0000 0100
       Wire.beginTransmission(pcf_Aktoren);
-      Serial.println("FilterPumpeManuell ein!");
+      Serial.println("PumpeDusche ein!");
+      lcdPrintOut("PumpeDusche ein!", "Wait..", "", "");
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
-      exit;
+      messageReceived = false;
     }
-    
-    if (!flagPumpeDusche)
+
+    if (!flagPumpeDusche && messageReceived)
     {
-      pcfData = (pcfData & 0xFC); // 1111 0111
+      pcfData = (pcfData & 0xFC); // 1111 1011
       Wire.beginTransmission(pcf_Aktoren);
-      Serial.println("FilterPumpeManuell aus!");
+      Serial.println("PumpeDusche aus!");
+      lcdPrintOut("PumpeDusche aus!", "Wait..", "", "");
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
-      exit;
+      messageReceived = false;
     }
 
+    // Unterwasserscheinwerfer
+    if (flagUnterwasserscheinwerfer && messageReceived)
+    {
+      pcfData = (pcfData | 0x08); // 0000 1000
+      Wire.beginTransmission(pcf_Aktoren);
+      Serial.println("Unterwasserscheinwerfer ein!");
+      lcdPrintOut("Uw-Scheinwerfer ein!", "Wait..", "", "");
+      Wire.write(pcfData); // alles ein
+      Wire.endTransmission();
+      messageReceived = false;
+    }
 
+    if (!flagUnterwasserscheinwerfer && messageReceived)
+    {
+      pcfData = (pcfData & 0xFB); // 1111 0111
+      Wire.beginTransmission(pcf_Aktoren);
+      Serial.println("Unterwasserscheinwerfer aus!");
+      lcdPrintOut("Uw-Scheinwerfer aus!", "Wait..", "", "");
+      Wire.write(pcfData); // alles aus
+      Wire.endTransmission();
+      messageReceived = false;
+    }
 
+    // Regenwalddusche
+    if (flagVentilRegenwaldDusche && messageReceived)
+    {
+      pcfData = (pcfData | 0x14); // 0000 1000
+      Wire.beginTransmission(pcf_Aktoren);
+      Serial.println("Regenwalddusche ein!");
+      lcdPrintOut("Regenwalddusche ein!", "Wait..", "", "");
+      Wire.write(pcfData); // alles ein
+      Wire.endTransmission();
+      messageReceived = false;
+    }
 
-    messageReceived = false;
+    if (!flagVentilRegenwaldDusche && messageReceived)
+    {
+      pcfData = (pcfData & 0xEB); // 1111 0111
+      Wire.beginTransmission(pcf_Aktoren);
+      Serial.println("Regenwalddusche aus!");
+      lcdPrintOut("Regenwalddusche aus!", "Wait..", "", "");
+      Wire.write(pcfData); // alles aus
+      Wire.endTransmission();
+      messageReceived = false;
+    }
+
+    // Regenwalddusche
+    if (flagVentilSchwallDusche && messageReceived)
+    {
+      pcfData = (pcfData | 0x24); // 0000 1000
+      Wire.beginTransmission(pcf_Aktoren);
+      Serial.println("Schwalldusche ein!");
+      lcdPrintOut("Schwalldusche ein!", "Wait..", "", "");
+      Wire.write(pcfData); // alles ein
+      Wire.endTransmission();
+      messageReceived = false;
+    }
+
+    if (!flagVentilSchwallDusche && messageReceived)
+    {
+      pcfData = (pcfData & 0xDB); // 1111 0111
+      Wire.beginTransmission(pcf_Aktoren);
+      Serial.println("Schwalldusche aus!");
+      lcdPrintOut("Schwalldusche aus!", "Wait..", "", "");
+      Wire.write(pcfData); // alles aus
+      Wire.endTransmission();
+      messageReceived = false;
+    }
   }
 
   // Test mit seriellem Monitor
@@ -675,7 +819,7 @@ void loop()
     {
     case 'a':
     { // LED 1 schalten
-      Wire.beginTransmission(0x21);
+      Wire.beginTransmission(pcf_Aktoren);
       data = (data | 0x01);
       Wire.write(data);
       Wire.endTransmission();
@@ -684,7 +828,7 @@ void loop()
     }
     case 'A':
     {
-      Wire.beginTransmission(0x21);
+      Wire.beginTransmission(pcf_Aktoren);
       data = (data & 0xFE);
       Wire.write(data);
       Wire.endTransmission();
@@ -694,7 +838,7 @@ void loop()
     case 'b':
     {
       // LED 2 schalten
-      Wire.beginTransmission(0x21);
+      Wire.beginTransmission(pcf_Aktoren);
       data = (data | 0x02);
       Wire.write(data);
       Wire.endTransmission();
@@ -703,7 +847,7 @@ void loop()
     }
     case 'B':
     {
-      Wire.beginTransmission(0x21);
+      Wire.beginTransmission(pcf_Aktoren);
       data = (data & 0xFD);
       Wire.write(data);
       Wire.endTransmission();
@@ -714,8 +858,7 @@ void loop()
   }
 
   // Durchflussmesser
-  // if ((millis() - previousTimeFlowMeter) > 10000)
-  // {
-  //   measureFlow();
-  // }
+  if ((millis() - previousTimeFlowMeter) > 10000)
+  {
+  }
 }
