@@ -138,7 +138,7 @@ int BB_Led = 23; // GPIO 23
 boolean bb_on = false;
 
 int ErrorLed = 2; // GPIO2
-boolean error_Led = false;
+boolean flagError_Led = false;
 
 // Init der Zeitkonstanten
 unsigned long previousTime = 0;
@@ -394,9 +394,11 @@ void lcdPrintOut(String text1, String text2, String text3, String text4)
 // Verbindung zum MQTT-Server herstellen
 void reconnect()
 {
+
+  int maxRetries = 5;
   Serial.println("Starte MQTT-Verbindung");
   int a = 0;
-  while (!client.connected())
+  while ((!client.connected()) && (a <= maxRetries))
   {
     Serial.print("Attempting MQTT-Connection");
     if (client.connect(clientid, "openhabian", "Jona2010"))
@@ -418,8 +420,22 @@ void reconnect()
       Serial.println("Try again in 5 Seconds...");
       delay(5000);
     }
-
     a++;
+  }
+  // Wenn nicht innerhalb von 5 Sekunden der MQTT-Server ein Connect hergestellt hat,
+  // dann boote ich den ESP32 "hard".
+  if (a = maxRetries)
+  {
+    Serial.println("Restart in 10 seconds!");
+    for (int a = 9; a >= 0; a--)
+    {
+      Serial.println(String(a));
+      String counter = "Restart in " + String(a) + " seconds.";
+      lcdPrintOut(counter, "", "", "");
+      delay(1000);
+    }
+    //
+    ESP.restart();
   }
 }
 
@@ -439,6 +455,13 @@ void setup()
   // DurchlussSensor
   pinMode(FlowSensor, INPUT);
 
+  // Init der Status LED's
+  pinMode(BB_Led, OUTPUT);
+  digitalWrite(BB_Led, HIGH); // BB Led aus!
+
+  pinMode(ErrorLed, OUTPUT);
+  digitalWrite(ErrorLed, HIGH); // ErrorLed aus!
+
   // Start serieller Port
   Serial.begin(9600);
 
@@ -453,24 +476,56 @@ void setup()
   lcdPrintOut("Start Sensor VL", "", "", "");
   sensorVorlauf.begin();
   sensorVorlauf.setResolution(10);
+  if (sensorVorlauf.getDeviceCount() == 1)
+  {
+    flagError_Led = false;
+  }
+  else
+  {
+    flagError_Led = true;
+  }
 
   // Starte Sensor Rücklauf
   Serial.println("Starte Sensor Rl");
   lcdPrintOut("Start Sensor RL", "", "", "");
   sensorRuecklauf.begin();
   sensorRuecklauf.setResolution(10);
+  if (sensorRuecklauf.getDeviceCount() == 1)
+  {
+    flagError_Led = false;
+  }
+  else
+  {
+    flagError_Led = true;
+  }
 
   // Starte Sensor Aussen
   Serial.println("Starte Sensor Aussen");
   lcdPrintOut("Start Sensor AU", "", "", "");
   sensorAussen.begin();
   sensorAussen.setResolution(10);
+  if (sensorAussen.getDeviceCount() == 1)
+  {
+    flagError_Led = false;
+  }
+  else
+  {
+    flagError_Led = true;
+  }
 
   // Starte Sensor Reserve
   Serial.println("Starte Sensor Reserve");
   lcdPrintOut("Start Sensor RT", "", "", "");
   sensorReserve.begin();
   sensorReserve.setResolution(10);
+  if (sensorReserve.getDeviceCount() == 1)
+  {
+    flagError_Led = false;
+  }
+  else
+  {
+    flagError_Led = true;
+  }
 
   // Start Rtc
   lcdPrintOut("Start RTC!", "Wait...", "", "");
@@ -494,10 +549,6 @@ void setup()
   Serial.print(WiFi.localIP());
   lcdPrintOut("WiFi strted", "IP-Adress", String(WiFi.localIP()), "");
   Serial.println();
-
-  // Init der Status LED's
-  pinMode(BB_Led, OUTPUT);
-  pinMode(ErrorLed, OUTPUT);
 
   // Init des NTP-Server/Zeitmanagments
   lcdPrintOut("Config NTP-server", "Wait...", "", "");
@@ -591,6 +642,7 @@ void loop()
   }
 
   // Schalten der BB-Led
+  // Setzen der Error-LED
   if ((millis() - previousTime) > 1000)
   {
     previousTime = millis();
@@ -603,6 +655,15 @@ void loop()
     {
       digitalWrite(BB_Led, LOW);
       bb_on = false;
+    }
+
+    if (flagError_Led = true)
+    {
+      digitalWrite(ErrorLed, HIGH);
+    }
+    else
+    {
+      digitalWrite(ErrorLed, LOW);
     }
   }
 
@@ -756,7 +817,7 @@ void loop()
     {
     case 'a':
     { // LED 1 schalten
-      Wire.beginTransmission(0x21);
+      Wire.beginTransmission(pcf_Aktoren);
       data = (data | 0x01);
       Wire.write(data);
       Wire.endTransmission();
@@ -765,7 +826,7 @@ void loop()
     }
     case 'A':
     {
-      Wire.beginTransmission(0x21);
+      Wire.beginTransmission(pcf_Aktoren);
       data = (data & 0xFE);
       Wire.write(data);
       Wire.endTransmission();
@@ -775,7 +836,7 @@ void loop()
     case 'b':
     {
       // LED 2 schalten
-      Wire.beginTransmission(0x21);
+      Wire.beginTransmission(pcf_Aktoren);
       data = (data | 0x02);
       Wire.write(data);
       Wire.endTransmission();
@@ -784,7 +845,7 @@ void loop()
     }
     case 'B':
     {
-      Wire.beginTransmission(0x21);
+      Wire.beginTransmission(pcf_Aktoren);
       data = (data & 0xFD);
       Wire.write(data);
       Wire.endTransmission();
@@ -795,8 +856,7 @@ void loop()
   }
 
   // Durchflussmesser
-  // if ((millis() - previousTimeFlowMeter) > 10000)
-  // {
-  //   measureFlow();
-  // }
+  if ((millis() - previousTimeFlowMeter) > 10000)
+  {
+  }
 }
