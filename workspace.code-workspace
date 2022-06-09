@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "..\\Dallas18B20Sensor"
+		},
+		{
+			"path": "..\\Esp32OLed"
+		},
+		{
+			"path": "..\\TestBlink"
+		},
+		{
+			"path": "..\\Wifi"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}
