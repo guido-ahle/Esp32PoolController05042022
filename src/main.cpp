@@ -11,7 +11,7 @@
 #include <LiquidCrystal_I2C.h>
 
 // ModSeg-Kennung
-#define fwModSeg "09.06.2022 1.0/03"
+#define fwModSeg "14.06.2022 1.0/03"
 
 // Globales FehlerFlag
 boolean result = false;
@@ -42,6 +42,8 @@ char topicVorlauf[] = "esp32/Pool/Vorlauftemperatur";
 char topicRuecklauf[] = "esp32/Pool/Ruecklauftemperatur";
 char topicAussen[] = "esp32/Pool/Aussentemperatur";
 char topicReserve[] = "esp32/Pool/Reservetemperatur";
+
+char commandMqtt = 'x';
 
 // Externe Schaltausgäng per MQTT
 char topicSwitchFilterpumpe[] = "esp32/Reinigung/Filterpumpe";
@@ -144,6 +146,7 @@ boolean flagError_Led = false;
 // Init der Zeitkonstanten
 unsigned long previousTime = 0;
 unsigned long previousTimeMqtt = 0;
+unsigned long previousTimeLcdTime = 0;
 unsigned long lastMillis = 0;
 unsigned long previousTimeFlowMeter = 0;
 
@@ -156,6 +159,7 @@ char daysOfTheWeek[7][12] = {"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donne
 void callback(char *topic, byte *payload, unsigned int length)
 {
   messageTemp = "";
+  commandMqtt = '*';
   messageReceived = true;
   Serial.println("Messages arrived in topic: ");
   Serial.print("Message [");
@@ -178,12 +182,12 @@ void callback(char *topic, byte *payload, unsigned int length)
     if (messageTemp == "On")
     {
       Serial.println("On");
-      flagFilterPumpe = true;
+      commandMqtt = 'a';
     }
     else if (messageTemp == "Off")
     {
       Serial.println("Off");
-      flagFilterPumpe = false;
+      commandMqtt = 'A';
     }
   }
 
@@ -194,12 +198,12 @@ void callback(char *topic, byte *payload, unsigned int length)
     if (messageTemp == "On")
     {
       Serial.println("On");
-      flagFilterPumpeManuell = true;
+      commandMqtt = 'b';
     }
     else if (messageTemp == "Off")
     {
       Serial.println("Off");
-      flagFilterPumpeManuell = false;
+      commandMqtt = 'B';
     }
   }
 
@@ -210,12 +214,13 @@ void callback(char *topic, byte *payload, unsigned int length)
     if (messageTemp == "On")
     {
       Serial.println("On");
-      flagPumpeDusche = true;
+      commandMqtt = 'c';
     }
     else if (messageTemp == "Off")
     {
       Serial.println("Off");
-      flagPumpeDusche = false;
+      commandMqtt = 'C';
+
     }
   }
 
@@ -226,12 +231,14 @@ void callback(char *topic, byte *payload, unsigned int length)
     if (messageTemp == "On")
     {
       Serial.println("On");
-      flagUnterwasserscheinwerfer = true;
+      commandMqtt = 'd';
+
     }
     else if (messageTemp == "Off")
     {
       Serial.println("Off");
-      flagUnterwasserscheinwerfer = false;
+      commandMqtt = 'D';
+
     }
   }
 
@@ -242,12 +249,14 @@ void callback(char *topic, byte *payload, unsigned int length)
     if (messageTemp == "On")
     {
       Serial.println("On");
-      flagVentilRegenwaldDusche = true;
+      commandMqtt = 'e';
+
     }
     else if (messageTemp == "Off")
     {
       Serial.println("Off");
-      flagVentilRegenwaldDusche = false;
+      commandMqtt = 'E';
+
     }
   }
 
@@ -258,12 +267,14 @@ void callback(char *topic, byte *payload, unsigned int length)
     if (messageTemp == "On")
     {
       Serial.println("On");
-      flagVentilSchwallDusche = true;
+            commandMqtt = 'f';
+
     }
     else if (messageTemp == "Off")
     {
       Serial.println("Off");
-      flagVentilSchwallDusche = false;
+      commandMqtt = 'F';
+
     }
   }
 }
@@ -303,6 +314,7 @@ float getTemperatureFromSensorReserve()
 {
   float value = 0.0f;
   sensorReserve.requestTemperaturesByIndex(0);
+  
   value = sensorReserve.getTempCByIndex(0);
   Serial.println("Reserve = " + String(value));
   return value;
@@ -379,6 +391,8 @@ void printLocalTime()
 void lcdPrintOut(String text1, String text2, String text3, String text4)
 {
   
+  lcd.clear();
+
   lcd.setCursor(0, 0);
   lcd.print(text1);
 
@@ -390,7 +404,8 @@ void lcdPrintOut(String text1, String text2, String text3, String text4)
 
   lcd.setCursor(0, 3);
   lcd.print(text4);
-  // delay(1000);
+  delay(1000);
+  
 }
 
 // Verbindung zum MQTT-Server herstellen
@@ -400,7 +415,7 @@ void reconnect()
   int maxRetries = 5;
   Serial.println("Starte MQTT-Verbindung");
   int a = 0;
-  while ((!client.connected()) && (a <= maxRetries))
+  while ((!client.connected()) || (a <= maxRetries))
   {
     Serial.print("Attempting MQTT-Connection");
     if (client.connect(clientid, "openhabian", "Jona2010"))
@@ -414,31 +429,18 @@ void reconnect()
       client.subscribe(topicSwitchVentilRegenwalddusche);
       client.subscribe(topicSwitchVentilSchwalldusche);
       client.subscribe(topicSwitchFilterPumpeManuell);
+      break;
     }
     else
     {
-      Serial.print("failed, rc = ");
+      Serial.println("failed, rc = ");
       client.print(client.state());
       Serial.println("Try again in 5 Seconds...");
       delay(10000);
     }
     a++;
   }
-  // Wenn nicht innerhalb von 5 Sekunden der MQTT-Server ein Connect hergestellt hat,
-  // dann boote ich den ESP32 "hard".
-  if (a = maxRetries)
-  {
-    Serial.println("Restart in 10 seconds!");
-    for (int a = 9; a >= 0; a--)
-    {
-      Serial.println(String(a));
-      String counter = "Restart in " + String(a) + " seconds.";
-      lcdPrintOut(counter, "", "", "");
-      delay(1000);
-    }
-    //
-    ESP.restart();
-  }
+  
 }
 
 // Gets the actual Time from RTC.
@@ -478,6 +480,7 @@ void setup()
   lcdPrintOut("Start Sensor VL", "", "", "");
   sensorVorlauf.begin();
   sensorVorlauf.setResolution(10);
+  sensorVorlauf.setWaitForConversion(true);
   if (sensorVorlauf.getDeviceCount() == 1)
   {
     flagError_Led = false;
@@ -492,6 +495,7 @@ void setup()
   lcdPrintOut("Start Sensor RL", "", "", "");
   sensorRuecklauf.begin();
   sensorRuecklauf.setResolution(10);
+  sensorRuecklauf.setWaitForConversion(true);
   if (sensorRuecklauf.getDeviceCount() == 1)
   {
     flagError_Led = false;
@@ -506,6 +510,7 @@ void setup()
   lcdPrintOut("Start Sensor AU", "", "", "");
   sensorAussen.begin();
   sensorAussen.setResolution(10);
+  sensorAussen.setWaitForConversion(true);
   if (sensorAussen.getDeviceCount() == 1)
   {
     flagError_Led = false;
@@ -520,6 +525,7 @@ void setup()
   lcdPrintOut("Start Sensor RT", "", "", "");
   sensorReserve.begin();
   sensorReserve.setResolution(10);
+  sensorReserve.setWaitForConversion(true);
   if (sensorReserve.getDeviceCount() == 1)
   {
     flagError_Led = false;
@@ -643,6 +649,15 @@ void loop()
     client.publish(topicInfoFirmware, fwModSeg);
   }
 
+//Einfach mal die Uhrzeit auf dem Display ausgeben
+if ((millis() - previousTimeLcdTime) > 5000)
+  {
+    previousTimeLcdTime = millis();
+    char buf[20];
+    String timeForLcd = getRtcTime();
+    lcdPrintOut("Messzeit", timeForLcd, fwModSeg,"");
+  }
+
   // Schalten der BB-Led
   // Setzen der Error-LED
   if ((millis() - previousTime) > 1000)
@@ -661,11 +676,11 @@ void loop()
 
     if (flagError_Led = true)
     {
-      digitalWrite(ErrorLed, HIGH);
+      digitalWrite(ErrorLed, LOW);
     }
     else
     {
-      digitalWrite(ErrorLed, LOW);
+      digitalWrite(ErrorLed, HIGH);
     }
   }
 
@@ -674,144 +689,137 @@ void loop()
     Serial.println("Nachricht erhalten!");
     // Auswertung der Nachrichten
     // Filterpumpe
-    if (flagFilterPumpe && messageReceived)
+    if (commandMqtt == 'a')
     {
+      lcdPrintOut("FilterPumpe ein!", "Wait..", "", "");
+      Serial.println("FilterPumpe ein!");
       pcfData = (pcfData | 0x01); // 0000 0001
       Wire.beginTransmission(pcf_Aktoren);
-      Serial.println("FilterPumpe ein!");
-      lcdPrintOut("FilterPumpe ein!", "Wait..", "", "");
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
-      messageReceived = false;
     }
 
-    if (!flagFilterPumpe && messageReceived)
+    if (commandMqtt == 'A')
     {
+      lcdPrintOut("FilterPumpe aus!", "Wait..", "", "");
+      Serial.println("FilterPumpe aus!");
       pcfData = (pcfData & 0xFE); // 1111 1110
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
-      Serial.println("FilterPumpe aus!");
-      lcdPrintOut("FilterPumpe aus!", "Wait..", "", "");
       Wire.endTransmission();
-      messageReceived = false;
     }
 
     // FilterPumpeManuell
-    if (flagFilterPumpeManuell && messageReceived)
+    if (commandMqtt == 'b')
     {
-      pcfData = (pcfData | 0x02); // 0000 0010
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("FilterPumpeManuell ein!");
       lcdPrintOut("FilterPumpeManuell ein!", "Wait..", "", "");
+      pcfData = (pcfData | 0x02); // 0000 0010
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
-      messageReceived = false;
     }
-    if (!flagFilterPumpeManuell && messageReceived)
+
+    if (commandMqtt == 'B')
     {
-      pcfData = (pcfData & 0xFD); // 1111 1101
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("FilterPumpeManuell aus!");
       lcdPrintOut("FilterPumpeManuell aus!", "Wait..", "", "");
+      pcfData = (pcfData & 0xFD); // 1111 1101
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
       messageReceived = false;
     }
 
     // PumpeDusche
-    if (flagPumpeDusche && messageReceived)
+    if (commandMqtt == 'c')
     {
-      pcfData = (pcfData | 0x04); // 0000 0100
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("PumpeDusche ein!");
       lcdPrintOut("PumpeDusche ein!", "Wait..", "", "");
+      pcfData = (pcfData | 0x04); // 0000 0100
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
-      messageReceived = false;
     }
 
-    if (!flagPumpeDusche && messageReceived)
+    if (commandMqtt == 'C')
     {
-      pcfData = (pcfData & 0xFC); // 1111 1011
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("PumpeDusche aus!");
       lcdPrintOut("PumpeDusche aus!", "Wait..", "", "");
+      pcfData = (pcfData & 0xFC); // 1111 1011
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
       messageReceived = false;
     }
 
     // Unterwasserscheinwerfer
-    if (flagUnterwasserscheinwerfer && messageReceived)
+    if (commandMqtt == 'd')
     {
-      pcfData = (pcfData | 0x08); // 0000 1000
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("Unterwasserscheinwerfer ein!");
       lcdPrintOut("Uw-Scheinwerfer ein!", "Wait..", "", "");
+      pcfData = (pcfData | 0x08); // 0000 1000
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
-      messageReceived = false;
     }
 
-    if (!flagUnterwasserscheinwerfer && messageReceived)
+    if (commandMqtt == 'D')
     {
-      pcfData = (pcfData & 0xFB); // 1111 0111
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("Unterwasserscheinwerfer aus!");
       lcdPrintOut("Uw-Scheinwerfer aus!", "Wait..", "", "");
+      pcfData = (pcfData & 0xFB); // 1111 0111
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
-      messageReceived = false;
     }
 
     // Regenwalddusche
-    if (flagVentilRegenwaldDusche && messageReceived)
+    if (commandMqtt == 'e')
     {
-      pcfData = (pcfData | 0x14); // 0000 1000
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("Regenwalddusche ein!");
       lcdPrintOut("Regenwalddusche ein!", "Wait..", "", "");
+      pcfData = (pcfData | 0x14); // 0000 1000
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
-      messageReceived = false;
     }
 
-    if (!flagVentilRegenwaldDusche && messageReceived)
+    if (commandMqtt == 'E')
     {
-      pcfData = (pcfData & 0xEB); // 1111 0111
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("Regenwalddusche aus!");
       lcdPrintOut("Regenwalddusche aus!", "Wait..", "", "");
+      pcfData = (pcfData & 0xEB); // 1111 0111
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
-      messageReceived = false;
     }
 
     // Regenwalddusche
-    if (flagVentilSchwallDusche && messageReceived)
+    if (commandMqtt == 'f')
     {
-      pcfData = (pcfData | 0x24); // 0000 1000
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("Schwalldusche ein!");
       lcdPrintOut("Schwalldusche ein!", "Wait..", "", "");
+      pcfData = (pcfData | 0x24); // 0000 1000
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
-      messageReceived = false;
     }
 
-    if (!flagVentilSchwallDusche && messageReceived)
+    if (commandMqtt == 'F')
     {
-      pcfData = (pcfData & 0xDB); // 1111 0111
-      Wire.beginTransmission(pcf_Aktoren);
       Serial.println("Schwalldusche aus!");
       lcdPrintOut("Schwalldusche aus!", "Wait..", "", "");
+      pcfData = (pcfData & 0xDB); // 1111 0111
+      Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
-      messageReceived = false;
     }
-  }
 
-  // Test mit seriellem Monitor
+      messageReceived = false;
+
+  };
+    // Test mit seriellem Monitor
   if (Serial.available())
   {
     char x = Serial.read();
@@ -857,8 +865,4 @@ void loop()
     }
   }
 
-  // Durchflussmesser
-  if ((millis() - previousTimeFlowMeter) > 10000)
-  {
   }
-}
