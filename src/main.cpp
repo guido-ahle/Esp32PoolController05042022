@@ -11,7 +11,7 @@
 #include <LiquidCrystal_I2C.h>
 
 // ModSeg-Kennung
-#define fwModSeg "14.06.2022 1.0/03"
+#define fwModSeg "14.06.2022 1.0/04"
 
 // Globales FehlerFlag
 boolean result = false;
@@ -67,9 +67,27 @@ boolean flagPumpeDusche = false;
 String messageTemp = "";
 boolean messageReceived = false;
 
-// konstanten für I2C
+// konstanten für I2C-Bus
 const byte allOutPutsLow = 0x00;
 byte pcfData = 0x00;
+
+const byte FilterPumpeOn = 0x01; // 0000 0001
+const byte FilterPumpeManuellOn = 0x02; // 0000 0010
+const byte UwsOn = 0x04; // 0000 0100
+const byte SchwallDuscheOn = 0x08; // 0000 1000
+const byte VentilPoolDuscheOn = 0x18; // 0001 1000
+const byte VentilRegenwaldDuscheOn = 0x28; // 0010 1000
+const byte PumpeDuscheOn = 0x40; // tbd.
+const byte WpOn = 0x80;
+
+const byte FilterPumpeOff = 0xfd;
+const byte FilterPumpeManuellOff = 0xfe;
+const byte UwsOff = 0xfb;
+const byte SchwallDuscheOff = 0xf7;
+const byte VentilPoolDuscheOff = 0xe7;
+const byte VentilRegenwaldDuscheOff = 0xd7;
+const byte PumpeDuscheOff = 0xbf; // tbd.
+const byte WpOff = 0x7f0; //tbd.
 
 // I2C-Bus
 #define pcf_Aktoren 0x21    // Schaltet alle Aktoren
@@ -97,7 +115,6 @@ struct tm timeInfo;
 char timeString[32];
 String strMTime;
 String timeStampMeasurement = "00:00:00";
-
 
 // Init des NTP-Servers
 #define ntpServer "ptbtime1.ptb.de"
@@ -207,10 +224,10 @@ void callback(char *topic, byte *payload, unsigned int length)
     }
   }
 
-  // Pumpe Dusche
-  if (String(topic) == topicSwitchPumpeDusche)
+  // Unterwasserscheinwerfer
+  if (String(topic) == topicSwitchUnterwasserscheinwerfer)
   {
-    Serial.println("PumpeDusche Message!");
+    Serial.println("Unterwasserscheinwerfer Message!");
     if (messageTemp == "On")
     {
       Serial.println("On");
@@ -220,61 +237,54 @@ void callback(char *topic, byte *payload, unsigned int length)
     {
       Serial.println("Off");
       commandMqtt = 'C';
-
     }
   }
 
-  // Unterwasserscheinwerfer
-  if (String(topic) == topicSwitchUnterwasserscheinwerfer)
+  // Pumpe Dusche
+  if (String(topic) == topicSwitchPumpeDusche)
   {
-    Serial.println("Unterwasserscheinwerfer Message!");
+    Serial.println("PumpeDusche Message!");
     if (messageTemp == "On")
     {
       Serial.println("On");
       commandMqtt = 'd';
-
     }
     else if (messageTemp == "Off")
     {
       Serial.println("Off");
       commandMqtt = 'D';
-
     }
   }
 
-  // Unterwasserscheinwerfer
-  if (String(topic) == topicSwitchVentilRegenwalddusche)
-  {
-    Serial.println("RegenwaldDusche Message!");
-    if (messageTemp == "On")
-    {
-      Serial.println("On");
-      commandMqtt = 'e';
-
-    }
-    else if (messageTemp == "Off")
-    {
-      Serial.println("Off");
-      commandMqtt = 'E';
-
-    }
-  }
-
-  // Unterwasserscheinwerfer
+  // Ventil Schwalldusche
   if (String(topic) == topicSwitchVentilSchwalldusche)
   {
     Serial.println("Schwalldusche Message!");
     if (messageTemp == "On")
     {
       Serial.println("On");
-            commandMqtt = 'f';
+      commandMqtt = 'e';
+    }
+    else if (messageTemp == "Off")
+    {
+      Serial.println("Off");
+      commandMqtt = 'E';
+    }
+  }
 
+  // Ventil Regenwalddusche
+  if (String(topic) == topicSwitchVentilRegenwalddusche)
+  {
+    Serial.println("RegenwaldDusche Message!");
+    if (messageTemp == "On")
+    {
+      Serial.println("On");
+      commandMqtt = 'f';
     }
     else if (messageTemp == "Off")
     {
       Serial.println("Off");
       commandMqtt = 'F';
-
     }
   }
 }
@@ -314,7 +324,7 @@ float getTemperatureFromSensorReserve()
 {
   float value = 0.0f;
   sensorReserve.requestTemperaturesByIndex(0);
-  
+
   value = sensorReserve.getTempCByIndex(0);
   Serial.println("Reserve = " + String(value));
   return value;
@@ -390,7 +400,7 @@ void printLocalTime()
 // Datenausgabe auf LCD
 void lcdPrintOut(String text1, String text2, String text3, String text4)
 {
-  
+
   lcd.clear();
 
   lcd.setCursor(0, 0);
@@ -405,7 +415,6 @@ void lcdPrintOut(String text1, String text2, String text3, String text4)
   lcd.setCursor(0, 3);
   lcd.print(text4);
   delay(1000);
-  
 }
 
 // Verbindung zum MQTT-Server herstellen
@@ -440,7 +449,6 @@ void reconnect()
     }
     a++;
   }
-  
 }
 
 // Gets the actual Time from RTC.
@@ -649,13 +657,13 @@ void loop()
     client.publish(topicInfoFirmware, fwModSeg);
   }
 
-//Einfach mal die Uhrzeit auf dem Display ausgeben
-if ((millis() - previousTimeLcdTime) > 5000)
+  // Einfach mal die Uhrzeit auf dem Display ausgeben
+  if ((millis() - previousTimeLcdTime) > 5000)
   {
     previousTimeLcdTime = millis();
     char buf[20];
     String timeForLcd = getRtcTime();
-    lcdPrintOut("Messzeit", timeForLcd, fwModSeg,"");
+    lcdPrintOut("Messzeit", timeForLcd, fwModSeg, "");
   }
 
   // Schalten der BB-Led
@@ -693,7 +701,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       lcdPrintOut("FilterPumpe ein!", "Wait..", "", "");
       Serial.println("FilterPumpe ein!");
-      pcfData = (pcfData | 0x01); // 0000 0001
+      pcfData = (pcfData | FilterPumpeOn); // 0000 0001
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
@@ -703,7 +711,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       lcdPrintOut("FilterPumpe aus!", "Wait..", "", "");
       Serial.println("FilterPumpe aus!");
-      pcfData = (pcfData & 0xFE); // 1111 1110
+      pcfData = (pcfData & FilterPumpeManuellOff); // 1111 1110
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
@@ -714,7 +722,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       Serial.println("FilterPumpeManuell ein!");
       lcdPrintOut("FilterPumpeManuell ein!", "Wait..", "", "");
-      pcfData = (pcfData | 0x02); // 0000 0010
+      pcfData = (pcfData | FilterPumpeManuellOn); // 0000 0010
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
@@ -724,7 +732,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       Serial.println("FilterPumpeManuell aus!");
       lcdPrintOut("FilterPumpeManuell aus!", "Wait..", "", "");
-      pcfData = (pcfData & 0xFD); // 1111 1101
+      pcfData = (pcfData & FilterPumpeManuellOff); // 1111 1101
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
@@ -736,7 +744,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       Serial.println("PumpeDusche ein!");
       lcdPrintOut("PumpeDusche ein!", "Wait..", "", "");
-      pcfData = (pcfData | 0x04); // 0000 0100
+      pcfData = (pcfData | SchwallDuscheOn); // 0000 0100
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
@@ -746,7 +754,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       Serial.println("PumpeDusche aus!");
       lcdPrintOut("PumpeDusche aus!", "Wait..", "", "");
-      pcfData = (pcfData & 0xFC); // 1111 1011
+      pcfData = (pcfData & SchwallDuscheOff); // 1111 1011
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
@@ -758,7 +766,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       Serial.println("Unterwasserscheinwerfer ein!");
       lcdPrintOut("Uw-Scheinwerfer ein!", "Wait..", "", "");
-      pcfData = (pcfData | 0x08); // 0000 1000
+      pcfData = (pcfData | UwsOn); // 0000 1000
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
@@ -768,7 +776,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       Serial.println("Unterwasserscheinwerfer aus!");
       lcdPrintOut("Uw-Scheinwerfer aus!", "Wait..", "", "");
-      pcfData = (pcfData & 0xFB); // 1111 0111
+      pcfData = (pcfData & UwsOff); // 1111 0111
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
@@ -779,7 +787,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       Serial.println("Regenwalddusche ein!");
       lcdPrintOut("Regenwalddusche ein!", "Wait..", "", "");
-      pcfData = (pcfData | 0x14); // 0000 1000
+      pcfData = (pcfData | VentilRegenwaldDuscheOn); // 0000 1000
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles ein
       Wire.endTransmission();
@@ -789,7 +797,7 @@ if ((millis() - previousTimeLcdTime) > 5000)
     {
       Serial.println("Regenwalddusche aus!");
       lcdPrintOut("Regenwalddusche aus!", "Wait..", "", "");
-      pcfData = (pcfData & 0xEB); // 1111 0111
+      pcfData = (pcfData & VentilRegenwaldDuscheOff); // 1111 0111
       Wire.beginTransmission(pcf_Aktoren);
       Wire.write(pcfData); // alles aus
       Wire.endTransmission();
@@ -816,10 +824,9 @@ if ((millis() - previousTimeLcdTime) > 5000)
       Wire.endTransmission();
     }
 
-      messageReceived = false;
-
+    messageReceived = false;
   };
-    // Test mit seriellem Monitor
+  // Test mit seriellem Monitor
   if (Serial.available())
   {
     char x = Serial.read();
@@ -864,5 +871,4 @@ if ((millis() - previousTimeLcdTime) > 5000)
     }
     }
   }
-
-  }
+}
